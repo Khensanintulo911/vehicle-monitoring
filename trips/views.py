@@ -1,14 +1,17 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth import login, authenticate
 from django.contrib import messages
-from django.http import JsonResponse
-from django.views.decorators.http import require_http_methods
-from rest_framework import viewsets, status
+from django.utils import timezone
+from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from decimal import Decimal
 from .models import Driver, Vehicle, Job, Trip, TripEvent, GPSRoutePoint
-from .serializers import (DriverSerializer, VehicleSerializer, JobSerializer,
-                          TripSerializer, TripEventSerializer, GPSRoutePointSerializer)
+from .serializers import (
+    DriverSerializer, VehicleSerializer, JobSerializer,
+    TripSerializer, TripEventSerializer, GPSRoutePointSerializer
+)
 
 
 @login_required
@@ -16,16 +19,18 @@ def driver_dashboard(request):
     try:
         driver = Driver.objects.get(user=request.user)
     except Driver.DoesNotExist:
-        messages.error(request, 'You are not registered as a driver.')
-        return redirect('admin:index')
+        messages.error(request, "You are not registered as a driver.")
+        return redirect('/admin/')
     
     assigned_jobs = Job.objects.filter(assigned_driver=driver, status='assigned')
     active_trip = Trip.objects.filter(driver=driver, status='started').first()
+    completed_trips = Trip.objects.filter(driver=driver, status='completed')[:5]
     
     context = {
         'driver': driver,
         'assigned_jobs': assigned_jobs,
         'active_trip': active_trip,
+        'completed_trips': completed_trips,
     }
     return render(request, 'trips/driver_dashboard.html', context)
 
@@ -35,10 +40,14 @@ def start_trip(request, job_id):
     try:
         driver = Driver.objects.get(user=request.user)
     except Driver.DoesNotExist:
-        messages.error(request, 'You are not registered as a driver.')
-        return redirect('driver_dashboard')
+        messages.error(request, "You are not registered as a driver.")
+        return redirect('/admin/')
     
     job = get_object_or_404(Job, id=job_id, assigned_driver=driver)
+    
+    if Trip.objects.filter(driver=driver, status='started').exists():
+        messages.error(request, "You already have an active trip. Please complete it first.")
+        return redirect('driver_dashboard')
     
     if request.method == 'POST':
         start_odometer = request.POST.get('start_odometer')
@@ -46,55 +55,25 @@ def start_trip(request, job_id):
         start_lat = request.POST.get('start_lat')
         start_lng = request.POST.get('start_lng')
         
-        if not start_odometer:
-            messages.error(request, 'Starting odometer reading is required.')
-            return render(request, 'trips/start_trip.html', {'job': job, 'driver': driver})
-        
-        if not start_lat or not start_lng:
-            messages.error(request, 'GPS location is required. Please enable location services.')
-            return render(request, 'trips/start_trip.html', {'job': job, 'driver': driver})
-        
-        try:
-            from decimal import Decimal, InvalidOperation
-            start_odometer_value = Decimal(str(start_odometer))
-        except (ValueError, TypeError, InvalidOperation):
-            messages.error(request, 'Invalid odometer reading.')
-            return render(request, 'trips/start_trip.html', {'job': job, 'driver': driver})
-        
-        try:
-            start_lat_value = Decimal(str(start_lat))
-            start_lng_value = Decimal(str(start_lng))
-        except (ValueError, TypeError, InvalidOperation):
-            messages.error(request, 'Invalid GPS coordinates. Please try again.')
-            return render(request, 'trips/start_trip.html', {'job': job, 'driver': driver})
-        
-        start_fuel_value = None
-        if start_fuel_level:
-            try:
-                start_fuel_value = Decimal(str(start_fuel_level))
-            except (ValueError, TypeError, InvalidOperation):
-                messages.error(request, 'Invalid fuel level.')
-                return render(request, 'trips/start_trip.html', {'job': job, 'driver': driver})
-        
         trip = Trip.objects.create(
             job=job,
             driver=driver,
             vehicle=job.assigned_vehicle,
-            start_odometer=start_odometer_value,
-            start_fuel_level=start_fuel_value,
-            start_location_lat=start_lat_value,
-            start_location_lng=start_lng_value,
+            start_odometer=Decimal(start_odometer),
+            start_fuel_level=Decimal(start_fuel_level),
+            start_location_lat=Decimal(start_lat) if start_lat else None,
+            start_location_lng=Decimal(start_lng) if start_lng else None,
         )
         
         job.status = 'in_progress'
         job.save()
         
-        messages.success(request, f'Trip {trip.trip_number} started successfully!')
+        messages.success(request, f"Trip {trip.trip_number} started successfully!")
         return redirect('active_trip', trip_id=trip.id)
     
     context = {
         'job': job,
-        'driver': driver,
+        'vehicle': job.assigned_vehicle,
     }
     return render(request, 'trips/start_trip.html', context)
 
@@ -104,10 +83,33 @@ def active_trip(request, trip_id):
     try:
         driver = Driver.objects.get(user=request.user)
     except Driver.DoesNotExist:
-        messages.error(request, 'You are not registered as a driver.')
-        return redirect('driver_dashboard')
+        messages.error(request, "You are not registered as a driver.")
+        return redirect('/admin/')
     
     trip = get_object_or_404(Trip, id=trip_id, driver=driver, status='started')
+    
+    if request.method == 'POST':
+        action_type = request.POST.get('action')
+        
+        if action_type == 'add_event':
+            event_type = request.POST.get('event_type')
+            description = request.POST.get('description')
+            location_lat = request.POST.get('location_lat')
+            location_lng = request.POST.get('location_lng')
+            photo = request.FILES.get('photo')
+            
+            TripEvent.objects.create(
+                trip=trip,
+                event_type=event_type,
+                description=description,
+                location_lat=Decimal(location_lat) if location_lat else None,
+                location_lng=Decimal(location_lng) if location_lng else None,
+                photo=photo,
+            )
+            
+            messages.success(request, "Event logged successfully!")
+            return redirect('active_trip', trip_id=trip.id)
+    
     events = trip.events.all()
     
     context = {
@@ -118,110 +120,28 @@ def active_trip(request, trip_id):
 
 
 @login_required
-@require_http_methods(["POST"])
-def add_trip_event(request, trip_id):
-    try:
-        driver = Driver.objects.get(user=request.user)
-    except Driver.DoesNotExist:
-        return JsonResponse({'error': 'Not a driver'}, status=403)
-    
-    trip = get_object_or_404(Trip, id=trip_id, driver=driver, status='started')
-    
-    event_type = request.POST.get('event_type', '').strip()
-    description = request.POST.get('description', '').strip()
-    location_lat = request.POST.get('location_lat')
-    location_lng = request.POST.get('location_lng')
-    photo = request.FILES.get('photo')
-    
-    if not event_type or not description:
-        messages.error(request, 'Event type and description are required.')
-        return redirect('active_trip', trip_id=trip.id)
-    
-    valid_event_types = ['delay', 'fuel_stop', 'incident', 'arrival', 'completed', 'photo', 'other']
-    if event_type not in valid_event_types:
-        messages.error(request, 'Invalid event type.')
-        return redirect('active_trip', trip_id=trip.id)
-    
-    lat_value = None
-    lng_value = None
-    if location_lat and location_lng:
-        try:
-            from decimal import Decimal, InvalidOperation
-            lat_value = Decimal(str(location_lat))
-            lng_value = Decimal(str(location_lng))
-        except (ValueError, TypeError, InvalidOperation):
-            pass
-    
-    event = TripEvent.objects.create(
-        trip=trip,
-        event_type=event_type,
-        description=description,
-        location_lat=lat_value,
-        location_lng=lng_value,
-        photo=photo,
-    )
-    
-    messages.success(request, f'{event.get_event_type_display()} event added successfully!')
-    return redirect('active_trip', trip_id=trip.id)
-
-
-@login_required
 def end_trip(request, trip_id):
     try:
         driver = Driver.objects.get(user=request.user)
     except Driver.DoesNotExist:
-        messages.error(request, 'You are not registered as a driver.')
-        return redirect('driver_dashboard')
+        messages.error(request, "You are not registered as a driver.")
+        return redirect('/admin/')
     
     trip = get_object_or_404(Trip, id=trip_id, driver=driver, status='started')
     
     if request.method == 'POST':
         end_odometer = request.POST.get('end_odometer')
+        end_fuel_level = request.POST.get('end_fuel_level')
         end_lat = request.POST.get('end_lat')
         end_lng = request.POST.get('end_lng')
-        end_fuel_level = request.POST.get('end_fuel_level')
+        notes = request.POST.get('notes', '')
         
-        if not end_odometer:
-            messages.error(request, 'Ending odometer reading is required.')
-            return render(request, 'trips/end_trip.html', {'trip': trip})
-        
-        if not end_lat or not end_lng:
-            messages.error(request, 'GPS location is required. Please enable location services.')
-            return render(request, 'trips/end_trip.html', {'trip': trip})
-        
-        try:
-            from decimal import Decimal, InvalidOperation
-            end_odometer_value = Decimal(str(end_odometer))
-            if end_odometer_value < trip.start_odometer:
-                messages.error(request, 'Ending odometer cannot be less than starting odometer.')
-                return render(request, 'trips/end_trip.html', {'trip': trip})
-        except (ValueError, TypeError, InvalidOperation):
-            messages.error(request, 'Invalid odometer reading.')
-            return render(request, 'trips/end_trip.html', {'trip': trip})
-        
-        try:
-            end_lat_value = Decimal(str(end_lat))
-            end_lng_value = Decimal(str(end_lng))
-        except (ValueError, TypeError, InvalidOperation):
-            messages.error(request, 'Invalid GPS coordinates. Please try again.')
-            return render(request, 'trips/end_trip.html', {'trip': trip})
-        
-        end_fuel_value = None
-        if end_fuel_level:
-            try:
-                end_fuel_value = Decimal(str(end_fuel_level))
-            except (ValueError, TypeError, InvalidOperation):
-                messages.error(request, 'Invalid fuel level.')
-                return render(request, 'trips/end_trip.html', {'trip': trip})
-        
-        trip.end_odometer = end_odometer_value
-        trip.end_fuel_level = end_fuel_value
-        trip.end_location_lat = end_lat_value
-        trip.end_location_lng = end_lng_value
-        trip.notes = request.POST.get('notes', '')
-        
-        from django.utils import timezone
+        trip.end_odometer = Decimal(end_odometer)
+        trip.end_fuel_level = Decimal(end_fuel_level)
+        trip.end_location_lat = Decimal(end_lat) if end_lat else None
+        trip.end_location_lng = Decimal(end_lng) if end_lng else None
         trip.end_time = timezone.now()
+        trip.notes = notes
         trip.status = 'completed'
         trip.save()
         
@@ -233,7 +153,7 @@ def end_trip(request, trip_id):
         trip.vehicle.current_odometer = trip.end_odometer
         trip.vehicle.save()
         
-        messages.success(request, f'Trip {trip.trip_number} completed successfully!')
+        messages.success(request, f"Trip {trip.trip_number} completed successfully!")
         return redirect('driver_dashboard')
     
     context = {
@@ -243,27 +163,18 @@ def end_trip(request, trip_id):
 
 
 class DriverViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Driver.objects.filter(is_active=True)
+    queryset = Driver.objects.all()
     serializer_class = DriverSerializer
 
 
 class VehicleViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = Vehicle.objects.filter(is_active=True)
+    queryset = Vehicle.objects.all()
     serializer_class = VehicleSerializer
 
 
 class JobViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Job.objects.all()
     serializer_class = JobSerializer
-    
-    @action(detail=False, methods=['get'])
-    def by_driver(self, request):
-        driver_id = request.query_params.get('driver_id')
-        if driver_id:
-            jobs = self.queryset.filter(assigned_driver_id=driver_id)
-            serializer = self.get_serializer(jobs, many=True)
-            return Response(serializer.data)
-        return Response({'error': 'driver_id parameter required'}, status=400)
 
 
 class TripViewSet(viewsets.ReadOnlyModelViewSet):
@@ -273,40 +184,11 @@ class TripViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=['get'])
     def gps_route(self, request, pk=None):
         trip = self.get_object()
-        points = trip.gps_points.all()
-        serializer = GPSRoutePointSerializer(points, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def by_driver(self, request):
-        driver_id = request.query_params.get('driver_id')
-        if driver_id:
-            trips = self.queryset.filter(driver_id=driver_id)
-            serializer = self.get_serializer(trips, many=True)
-            return Response(serializer.data)
-        return Response({'error': 'driver_id parameter required'}, status=400)
-    
-    @action(detail=False, methods=['get'])
-    def active(self, request):
-        active_trips = self.queryset.filter(status='started')
-        serializer = self.get_serializer(active_trips, many=True)
+        gps_points = trip.gps_points.all()
+        serializer = GPSRoutePointSerializer(gps_points, many=True)
         return Response(serializer.data)
 
 
 class TripEventViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = TripEvent.objects.all()
     serializer_class = TripEventSerializer
-    
-    @action(detail=False, methods=['get'])
-    def by_trip(self, request):
-        trip_id = request.query_params.get('trip_id')
-        if trip_id:
-            events = self.queryset.filter(trip_id=trip_id)
-            serializer = self.get_serializer(events, many=True)
-            return Response(serializer.data)
-        return Response({'error': 'trip_id parameter required'}, status=400)
-
-
-class GPSRoutePointViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = GPSRoutePoint.objects.all()
-    serializer_class = GPSRoutePointSerializer

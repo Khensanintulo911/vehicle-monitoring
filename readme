@@ -1,0 +1,137 @@
+# Fleet Management System
+
+## Overview
+A comprehensive fleet management system with trip logging capabilities for drivers and analytics dashboard for managers. Built with Django backend and Streamlit dashboard.
+
+## Recent Changes
+**November 21, 2025**
+- Complete Django backend setup with PostgreSQL database
+- Mobile-friendly driver interface with GPS tracking
+- REST API endpoints for data access
+- Streamlit analytics dashboard ready to run
+- Sample data populated for testing
+- All three interfaces operational on Replit
+
+## Project Architecture
+
+### Backend (Django)
+- **Framework**: Django 4.2.7 with Django REST Framework
+- **Database**: PostgreSQL (Replit-hosted)
+- **Key Models**:
+  - Driver: Driver information linked to User model
+  - Vehicle: Fleet vehicle details and odometer tracking
+  - Job: Customer jobs assigned to drivers
+  - Trip: Trip sheets with automatic metrics calculation
+  - TripEvent: Events logged during trips (delays, fuel stops, incidents, photos)
+  - GPSRoutePoint: GPS tracking points for route visualization
+
+### Frontend
+- **Mobile Interface**: Django templates with Bootstrap 5 and Leaflet.js for maps
+- **Dashboard**: Streamlit with Plotly charts and Folium maps
+- **REST API**: Available at `/api/` for dashboard and future integrations
+
+### Key Features Implemented
+1. Job assignment system with customer details and locations
+2. Trip logging (start → events → end) with GPS tracking
+3. Automatic calculations:
+   - Distance travelled (GPS + odometer)
+   - Duration and fuel consumption
+   - Route compliance checking
+   - After-hours detection
+   - Fuel efficiency (km/L)
+4. Event logging during trips (delays, fuel stops, incidents, photos)
+5. Admin interface for managers to assign jobs and view all data
+6. Analytics dashboard with performance metrics and route visualization
+
+## Access & Credentials
+
+### Admin Panel
+URL: `/admin/`
+- Username: `admin`
+- Password: `admin123`
+
+### Driver Interface
+URL: `/` (root)
+- Driver 1: username `john`, password `driver123`
+- Driver 2: username `sarah`, password `driver123`
+
+### Streamlit Dashboard (Optional - For Managers)
+Run with: `streamlit run dashboard.py --server.port 8501 --server.address 0.0.0.0`
+Connects to Django API
+
+## Sample Data
+The system includes:
+- 2 drivers (John Smith, Sarah Johnson)
+- 2 vehicles (Bakkie #7, Van #3)
+- 3 jobs assigned to drivers
+
+## File Structure
+```
+fleet_management/          # Django project configuration
+  settings.py             # Database, apps, and middleware config
+  urls.py                 # Main URL routing
+  wsgi.py                 # WSGI application
+trips/                    # Main app
+  models.py              # Database models
+  views.py               # Mobile interface and API views
+  serializers.py         # REST API serializers
+  admin.py               # Admin interface configuration
+  urls.py                # App URL routing
+  apps.py                # App configuration
+  templates/trips/       # Mobile interface templates
+    base.html
+    driver_dashboard.html
+    start_trip.html
+    active_trip.html
+    end_trip.html
+  templates/registration/
+    login.html
+  migrations/            # Database migrations
+dashboard.py             # Streamlit analytics dashboard
+create_sample_data.py    # Script to populate test data
+test_complete_workflow.py # End-to-end workflow test
+manage.py                # Django management script
+requirements.txt         # Python dependencies
+```
+
+## API Endpoints
+All endpoints available at `/api/`:
+- `/api/drivers/` - List all drivers
+- `/api/vehicles/` - List all vehicles
+- `/api/jobs/` - List all jobs
+- `/api/trips/` - List all trips
+- `/api/trips/<id>/` - Trip details
+- `/api/trips/<id>/gps-route/` - GPS route points for a trip
+- `/api/trip-events/` - List all trip events
+
+## Development Notes
+- Django server runs on port 5000 (driver interface + API)
+- Streamlit dashboard runs on port 8501 (optional, for managers)
+- PostgreSQL database automatically configured via environment variables
+- Media files stored in `media/` directory for trip event photos
+- GPS coordinates captured automatically using browser geolocation API
+
+## How to Use the System
+
+### For Drivers:
+1. Go to the homepage and login with your credentials
+2. View assigned jobs on your dashboard
+3. Click "Start Trip" to begin a job
+4. Log events during the trip (arrival, delays, incidents, photos)
+5. Click "End Trip" when job is complete
+6. System automatically calculates distance, duration, fuel consumption, and route compliance
+
+### For Managers/Admins:
+1. Go to `/admin/` and login
+2. Assign jobs to drivers with vehicles
+3. View all trips, events, and metrics
+4. Run `streamlit run dashboard.py --server.port 8501` for analytics dashboard with charts and maps
+
+## Next Steps (Future Enhancements)
+- Add real-time GPS tracking during active trips
+- Implement automated alerts for route deviations
+- Create comprehensive reporting features (PDF, CSV export)
+- Add batch export functionality
+- Implement maintenance scheduling based on odometer readings
+- Add push notifications for job assignments
+- Create mobile apps (iOS/Android) for better offline support

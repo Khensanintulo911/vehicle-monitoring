@@ -1,79 +1,116 @@
-{% extends 'trips/base.html' %}
+{% extends "trips/base.html" %}
 
 {% block title %}Active Trip{% endblock %}
 
 {% block content %}
-<h2>Active Trip: {{ trip.trip_number }}</h2>
+<h1>Active Trip: {{ trip.trip_number }}</h1>
 
-<div class="card mb-3">
+<div class="card">
+    <div class="card-header bg-info text-white">
+        <h5>Trip Information</h5>
+    </div>
     <div class="card-body">
-        <h5>{{ trip.job.customer_name }} - {{ trip.job.job_location }}</h5>
-        <p><strong>Started:</strong> {{ trip.start_time|date:"Y-m-d H:i:s" }}</p>
-        <p><strong>Vehicle:</strong> {{ trip.vehicle }}</p>
-        <p><strong>Start Odometer:</strong> {{ trip.start_odometer }} km</p>
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Job:</strong> {{ trip.job.job_number }} - {{ trip.job.customer_name }}</p>
+                <p><strong>Vehicle:</strong> {{ trip.vehicle.name }}</p>
+                <p><strong>Started:</strong> {{ trip.start_time|date:"Y-m-d H:i" }}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Start Odometer:</strong> {{ trip.start_odometer }} km</p>
+                <p><strong>Start Fuel:</strong> {{ trip.start_fuel_level }} L</p>
+            </div>
+        </div>
     </div>
 </div>
 
-<h4>Log Event</h4>
-<form method="post" action="{% url 'add_trip_event' trip.id %}" enctype="multipart/form-data" class="mb-4">
-    {% csrf_token %}
-    <div class="row">
-        <div class="col-md-6 mb-3">
-            <label for="event_type" class="form-label">Event Type</label>
-            <select class="form-select" id="event_type" name="event_type" required>
-                <option value="delay">Delay</option>
-                <option value="fuel_stop">Fuel Stop</option>
-                <option value="incident">Incident/Damage</option>
-                <option value="arrival">Arrived at Customer</option>
-                <option value="completed">Completed Job</option>
-                <option value="photo">Photo Upload</option>
-                <option value="other">Other</option>
-            </select>
-        </div>
-        <div class="col-md-6 mb-3">
-            <label for="photo" class="form-label">Photo (optional)</label>
-            <input type="file" class="form-control" id="photo" name="photo" accept="image/*">
-        </div>
+<div class="card">
+    <div class="card-header bg-warning">
+        <h5>Log Event</h5>
     </div>
-    <div class="mb-3">
-        <label for="description" class="form-label">Description</label>
-        <textarea class="form-control" id="description" name="description" rows="2" required></textarea>
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data" id="eventForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_event">
+            
+            <div class="mb-3">
+                <label for="event_type" class="form-label">Event Type</label>
+                <select class="form-select" id="event_type" name="event_type" required>
+                    <option value="arrival">Arrival at Job Site</option>
+                    <option value="delay">Delay</option>
+                    <option value="fuel_stop">Fuel Stop</option>
+                    <option value="incident">Incident</option>
+                    <option value="photo">Photo</option>
+                    <option value="completed">Job Completed</option>
+                    <option value="other">Other</option>
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label for="description" class="form-label">Description</label>
+                <textarea class="form-control" id="description" name="description" rows="3" required></textarea>
+            </div>
+            
+            <div class="mb-3">
+                <label for="photo" class="form-label">Photo (optional)</label>
+                <input type="file" class="form-control" id="photo" name="photo" accept="image/*">
+            </div>
+            
+            <input type="hidden" id="location_lat" name="location_lat">
+            <input type="hidden" id="location_lng" name="location_lng">
+            
+            <button type="submit" class="btn btn-warning">Log Event</button>
+        </form>
     </div>
-    <input type="hidden" id="location_lat" name="location_lat">
-    <input type="hidden" id="location_lng" name="location_lng">
-    <button type="submit" class="btn btn-primary">Add Event</button>
-</form>
+</div>
 
-<h4>Trip Events</h4>
-{% if events %}
-<div class="list-group mb-3">
-    {% for event in events %}
-    <div class="list-group-item event-card">
-        <div class="d-flex w-100 justify-content-between">
-            <h6 class="mb-1">{{ event.get_event_type_display }}</h6>
-            <small>{{ event.timestamp|date:"H:i:s" }}</small>
-        </div>
-        <p class="mb-1">{{ event.description }}</p>
-        {% if event.photo %}
-        <img src="{{ event.photo.url }}" class="img-thumbnail" style="max-width: 200px;">
+<div class="card">
+    <div class="card-header bg-secondary text-white">
+        <h5>Trip Events</h5>
+    </div>
+    <div class="card-body">
+        {% if events %}
+            <div class="list-group">
+                {% for event in events %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">{{ event.get_event_type_display }}</h6>
+                            <small>{{ event.timestamp|date:"H:i" }}</small>
+                        </div>
+                        <p class="mb-1">{{ event.description }}</p>
+                        {% if event.photo %}
+                            <img src="{{ event.photo.url }}" alt="Event photo" class="img-thumbnail" style="max-width: 200px;">
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted">No events logged yet.</p>
         {% endif %}
     </div>
-    {% endfor %}
 </div>
-{% else %}
-<p class="text-muted">No events logged yet.</p>
-{% endif %}
 
-<a href="{% url 'end_trip' trip.id %}" class="btn btn-danger">End Trip</a>
+<div class="mt-3">
+    <a href="{% url 'end_trip' trip.id %}" class="btn btn-danger btn-lg w-100">End Trip</a>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+document.getElementById('eventForm').addEventListener('submit', function(e) {
     if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(function(position) {
-            document.getElementById('location_lat').value = position.coords.latitude;
-            document.getElementById('location_lng').value = position.coords.longitude;
-        });
+        e.preventDefault();
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                document.getElementById('location_lat').value = position.coords.latitude;
+                document.getElementById('location_lng').value = position.coords.longitude;
+                e.target.submit();
+            },
+            function(error) {
+                e.target.submit();
+            }
+        );
     }
+});
 </script>
 {% endblock %}
