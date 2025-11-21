@@ -1,0 +1,53 @@
+{% extends 'trips/base.html' %}
+
+{% block title %}Start Trip{% endblock %}
+
+{% block content %}
+<h2>Start Trip</h2>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <h5>{{ job.job_number }} - {{ job.customer_name }}</h5>
+        <p><strong>Location:</strong> {{ job.job_location }}</p>
+        <p><strong>Vehicle:</strong> {{ job.assigned_vehicle }}</p>
+        <p>{{ job.description }}</p>
+    </div>
+</div>
+
+<form method="post" id="startTripForm">
+    {% csrf_token %}
+    <div class="mb-3">
+        <label for="start_odometer" class="form-label">Starting Odometer (km)</label>
+        <input type="number" step="0.1" class="form-control" id="start_odometer" name="start_odometer" required>
+    </div>
+    
+    <div class="mb-3">
+        <label for="start_fuel_level" class="form-label">Starting Fuel Level (litres or %)</label>
+        <input type="number" step="0.01" class="form-control" id="start_fuel_level" name="start_fuel_level">
+    </div>
+    
+    <input type="hidden" id="start_lat" name="start_lat">
+    <input type="hidden" id="start_lng" name="start_lng">
+    
+    <div id="map"></div>
+    
+    <button type="submit" class="btn btn-success mt-3">Start Trip</button>
+    <a href="{% url 'driver_dashboard' %}" class="btn btn-secondary mt-3">Cancel</a>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function(position) {
+            document.getElementById('start_lat').value = position.coords.latitude;
+            document.getElementById('start_lng').value = position.coords.longitude;
+            
+            var map = L.map('map').setView([position.coords.latitude, position.coords.longitude], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            L.marker([position.coords.latitude, position.coords.longitude]).addTo(map)
+                .bindPopup('Your Location').openPopup();
+        });
+    }
+</script>
+{% endblock %}

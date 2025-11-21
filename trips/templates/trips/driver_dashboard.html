@@ -1,0 +1,39 @@
+{% extends 'trips/base.html' %}
+
+{% block title %}Driver Dashboard{% endblock %}
+
+{% block content %}
+<h2>Welcome, {{ driver }}</h2>
+
+{% if active_trip %}
+<div class="alert alert-info">
+    <h4>Active Trip</h4>
+    <p><strong>Trip #:</strong> {{ active_trip.trip_number }}</p>
+    <p><strong>Job:</strong> {{ active_trip.job.customer_name }} - {{ active_trip.job.job_location }}</p>
+    <a href="{% url 'active_trip' active_trip.id %}" class="btn btn-primary">View Active Trip</a>
+</div>
+{% endif %}
+
+<h3 class="mt-4">Assigned Jobs</h3>
+{% if assigned_jobs %}
+<div class="list-group">
+    {% for job in assigned_jobs %}
+    <div class="list-group-item">
+        <div class="d-flex w-100 justify-content-between">
+            <h5 class="mb-1">{{ job.job_number }} - {{ job.customer_name }}</h5>
+            <small>{{ job.scheduled_start|date:"Y-m-d H:i" }}</small>
+        </div>
+        <p class="mb-1"><strong>Location:</strong> {{ job.job_location }}</p>
+        <p class="mb-1"><strong>Vehicle:</strong> {{ job.assigned_vehicle }}</p>
+        <p class="mb-1">{{ job.description }}</p>
+        {% if job.instructions %}
+        <p class="mb-1"><small><strong>Instructions:</strong> {{ job.instructions }}</small></p>
+        {% endif %}
+        <a href="{% url 'start_trip' job.id %}" class="btn btn-success btn-sm mt-2">Start Trip</a>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-muted">No assigned jobs at this time.</p>
+{% endif %}
+{% endblock %}
